@@ -130,11 +130,14 @@ export class TransactionConstruct {
 				threshold,
 				otherSignatories,
 				maybeTimepoint:
-					maybeTimepointArg === null ? null
-						: registry.createType('Option<Timepoint>',{
-							height: maybeTimepointArg.blockHeight,
-							index: maybeTimepointArg.extrinsicIndex,
-						}).toJSON(),
+					maybeTimepointArg === null
+						? null
+						: registry
+								.createType('Option<Timepoint>', {
+									height: maybeTimepointArg.blockHeight,
+									index: maybeTimepointArg.extrinsicIndex,
+								})
+								.toJSON(),
 				callHash,
 				maxWeight,
 			},
@@ -195,10 +198,12 @@ export class TransactionConstruct {
 			{
 				threshold,
 				otherSignatories,
-				maybeTimepoint: registry.createType('Option<Timepoint>', {
-					height: maybeTimepointArg?.blockHeight,
-					index: maybeTimepointArg?.extrinsicIndex,
-				}).toJSON(),
+				maybeTimepoint: registry
+					.createType('Option<Timepoint>', {
+						height: maybeTimepointArg?.blockHeight,
+						index: maybeTimepointArg?.extrinsicIndex,
+					})
+					.toJSON(),
 				call,
 				storeCall,
 				maxWeight,
@@ -427,11 +432,10 @@ export class TransactionConstruct {
 	 * Simple function to check if a call is balance transfer to the cold storage
 	 * address given on instance initizilation.
 	 */
-	safetyWorker({
-		unsigned,
-		registry,
-		metadataRpc,
-	}: UnsignedMaterial, coldStorage: string): boolean {
+	safetyWorker(
+		{ unsigned, registry, metadataRpc }: UnsignedMaterial,
+		coldStorage: string
+	): boolean {
 		const decodedC0 = txwrapper.decode(unsigned, {
 			registry,
 			metadataRpc,

@@ -21,11 +21,18 @@ export class ChainSync {
 			const block = await this.sidecarApi.getBlock();
 
 			for (const [idx, ext] of block.extrinsics.entries()) {
-				if (not !== undefined && parseInt(block.number) === not.blockHeight && idx === not.extrinsicIndex) {
+				if (
+					not !== undefined &&
+					parseInt(block.number) === not.blockHeight &&
+					idx === not.extrinsicIndex
+				) {
 					continue;
 				}
-				
-				for (const { method: { method, pallet }, data } of ext.events) {
+
+				for (const {
+					method: { method, pallet },
+					data,
+				} of ext.events) {
 					if (method === 'ExtrinsicFailed') {
 						throw ` !!! Unexpected extrinsic failure at block number ${block.number} 💣`;
 					}
@@ -65,7 +72,9 @@ export class ChainSync {
 			return true;
 		}
 
-		return expected.length === actual.length
-		    && expected.every((ele, idx) => ele === actual[idx]);
+		return (
+			expected.length === actual.length &&
+			expected.every((ele, idx) => ele === actual[idx])
+		);
 	}
 }

@@ -34,10 +34,18 @@ async function main() {
 	describeTransaction('Create and fund a multisig account');
 	await waitToContinue();
 
-	const addresses = [keys.multisig0.address, keys.multisig1.address, keys.multisig2.address];
+	const addresses = [
+		keys.multisig0.address,
+		keys.multisig1.address,
+		keys.multisig2.address,
+	];
 	const multisigThreshold = 2;
 	const ss58Prefix = CALIENTE_CHAIN_PROPERTIES.ss58Format;
-	const multisigAcct = encodeMultiAddress(addresses, multisigThreshold, ss58Prefix);
+	const multisigAcct = encodeMultiAddress(
+		addresses,
+		multisigThreshold,
+		ss58Prefix
+	);
 
 	console.log(' >>> Created multisig account ✍️');
 	console.log('  >> Component Accounts:');
@@ -46,7 +54,10 @@ async function main() {
 	console.log(`  >> Multisig Address: ${multisigAcct}\n`);
 
 	// Helpers for encoding signed transactions.
-	const transactionConstruct = new TransactionConstruct(SIDECAR_URL, CALIENTE_CHAIN_PROPERTIES);
+	const transactionConstruct = new TransactionConstruct(
+		SIDECAR_URL,
+		CALIENTE_CHAIN_PROPERTIES
+	);
 	// Helpers for interacting with the Sidecar REST API.
 	const sidecarApi = new SidecarApi(SIDECAR_URL);
 	// Helpers for blocking until completion of on-chain transactions.
@@ -54,7 +65,9 @@ async function main() {
 
 	// Load up multisig account with currency so it can make transactions.
 	const transferValue = '999999999999999';
-	describeTransaction(`Transferring ${transferValue} units from Alice to multisig account`);
+	describeTransaction(
+		`Transferring ${transferValue} units from Alice to multisig account`
+	);
 
 	const transferToMultiSigCall = await transactionConstruct.balancesTransfer(
 		{ origin: keys.multisig0.address },
@@ -71,7 +84,10 @@ async function main() {
 	response();
 	waiting();
 
-	const transferToMultisigTimepoint = await chainSync.pollingEventListener('balances', 'Transfer');
+	const transferToMultisigTimepoint = await chainSync.pollingEventListener(
+		'balances',
+		'Transfer'
+	);
 	success(transferToMultisigTimepoint);
 
 	logSeparator();
@@ -83,7 +99,7 @@ async function main() {
 	// transactions up to some maximum weight on behalf of the multisig account, but will have
 	// to announce the intention to do so and allow for a delay during which time a transaction
 	// may be canceled.
-	describeTransaction("Add Eve as time-delay proxy for multisig account");
+	describeTransaction('Add Eve as time-delay proxy for multisig account');
 	await waitToContinue();
 	await setupProxyForMultisig(
 		multisigAcct,
@@ -96,7 +112,9 @@ async function main() {
 		maxWeight
 	);
 
-	describeTransaction('Create two derived accounts from the multisig account and fund them');
+	describeTransaction(
+		'Create two derived accounts from the multisig account and fund them'
+	);
 	await waitToContinue();
 
 	const derivedAddr0 = encodeDerivedAddress(multisigAcct, 0, ss58Prefix);
@@ -115,7 +133,9 @@ async function main() {
 		derivedAddr1
 	);
 
-	describeTransaction("Use proxy address to send funds from multisig account to cold account");
+	describeTransaction(
+		'Use proxy address to send funds from multisig account to cold account'
+	);
 	await waitToContinue();
 	await happyPath(
 		transactionConstruct,
@@ -174,19 +194,28 @@ async function setupProxyForMultisig(
 	const bobApproveAsMulti = await transactionConstruct.multiSigApproveAsMulti(
 		{ origin: keys.multisig1.address },
 		2,
-		sortAddresses([keys.multisig0.address, keys.multisig2.address], ss58Prefix),
+		sortAddresses(
+			[keys.multisig0.address, keys.multisig2.address],
+			ss58Prefix
+		),
 		null,
 		addProxyEveHash,
 		maxWeight
 	);
-	const signedApproveAsMulti = transactionConstruct.createAndSignTransaction(keys.multisig1, bobApproveAsMulti);
+	const signedApproveAsMulti = transactionConstruct.createAndSignTransaction(
+		keys.multisig1,
+		bobApproveAsMulti
+	);
 	submitting();
 
 	await sidecarApi.submitTransaction(signedApproveAsMulti);
 	response();
 	waiting();
 
-	const bobApproveAsMultiTimepoint = await chainSync.pollingEventListener('multisig', 'NewMultisig');
+	const bobApproveAsMultiTimepoint = await chainSync.pollingEventListener(
+		'multisig',
+		'NewMultisig'
+	);
 	success(bobApproveAsMultiTimepoint);
 	console.log();
 
@@ -194,20 +223,29 @@ async function setupProxyForMultisig(
 	const daveAsMulti = await transactionConstruct.multiSigAsMulti(
 		{ origin: keys.multisig2.address },
 		2,
-		sortAddresses([keys.multisig0.address, keys.multisig1.address], ss58Prefix),
+		sortAddresses(
+			[keys.multisig0.address, keys.multisig1.address],
+			ss58Prefix
+		),
 		bobApproveAsMultiTimepoint,
 		addProxyEveMethod,
 		false,
 		maxWeight
 	);
-	const signedAsMulti = transactionConstruct.createAndSignTransaction(keys.multisig2,	daveAsMulti);
+	const signedAsMulti = transactionConstruct.createAndSignTransaction(
+		keys.multisig2,
+		daveAsMulti
+	);
 	submitting();
 
 	await sidecarApi.submitTransaction(signedAsMulti);
 	response();
 	waiting();
 
-	const daveAsMultiTimepoint = await chainSync.pollingEventListener('multisig', 'MultisigExecuted');
+	const daveAsMultiTimepoint = await chainSync.pollingEventListener(
+		'multisig',
+		'MultisigExecuted'
+	);
 	success(daveAsMultiTimepoint);
 	logSeparator();
 }
@@ -222,38 +260,58 @@ async function fundDerivedAccts(
 ): Promise<void> {
 	const transferValue = '999999999999999';
 
-	describeTransaction(`Transferring ${transferValue} units from Charlie to first derived address`);
+	describeTransaction(
+		`Transferring ${transferValue} units from Charlie to first derived address`
+	);
 	const transferToD0 = await transactionConstruct.balancesTransfer(
 		{ origin: keys.bank.address },
 		deriveAddr0,
-		transferValue,
+		transferValue
 	);
-	const signedTransferToD0 = transactionConstruct.createAndSignTransaction(keys.bank, transferToD0);
+	const signedTransferToD0 = transactionConstruct.createAndSignTransaction(
+		keys.bank,
+		transferToD0
+	);
 	submitting();
 
 	await sidecarApi.submitTransaction(signedTransferToD0);
 	response();
 	waiting();
 
-	const transferToD0Timepoint = await chainSync.pollingEventListener('balances', 'Transfer');
+	const transferToD0Timepoint = await chainSync.pollingEventListener(
+		'balances',
+		'Transfer'
+	);
 	success(transferToD0Timepoint);
 	console.log();
 
-	describeTransaction(`Transferring ${transferValue} units from Charlie to second derived address`);
-	const transferToD1 = await transactionConstruct.balancesTransfer(
-		{ origin: keys.bank.address, height: transferToD0Timepoint.blockHeight + 1 },
-		deriveAddr1,
-		transferValue,
+	describeTransaction(
+		`Transferring ${transferValue} units from Charlie to second derived address`
 	);
-	const signedTransferToD1 = transactionConstruct.createAndSignTransaction(keys.bank, transferToD1);
+	const transferToD1 = await transactionConstruct.balancesTransfer(
+		{
+			origin: keys.bank.address,
+			height: transferToD0Timepoint.blockHeight + 1,
+		},
+		deriveAddr1,
+		transferValue
+	);
+	const signedTransferToD1 = transactionConstruct.createAndSignTransaction(
+		keys.bank,
+		transferToD1
+	);
 	submitting();
 
 	await sidecarApi.submitTransaction(signedTransferToD1);
 	response();
 	waiting();
 
-	const transferToD1Timepoint = await chainSync.pollingEventListener('balances', 'Transfer', transferToD0Timepoint);
-	success(transferToD1Timepoint)
+	const transferToD1Timepoint = await chainSync.pollingEventListener(
+		'balances',
+		'Transfer',
+		transferToD0Timepoint
+	);
+	success(transferToD1Timepoint);
 	logSeparator();
 }
 
@@ -267,7 +325,9 @@ async function happyPath(
 	multisigAddr: string,
 	delayPeriod: number
 ): Promise<void> {
-	describeTransaction(`Announcing the proxy account's intent to transfer funds from the first derived account to the cold account`);
+	describeTransaction(
+		`Announcing the proxy account's intent to transfer funds from the first derived account to the cold account`
+	);
 
 	const {
 		unsigned: transferToColdStorage,
@@ -278,7 +338,9 @@ async function happyPath(
 		keys.coldAcct.address,
 		'1'
 	);
-	const { unsigned: derivedTransfer } = await transactionConstruct.utilityAsDerivative(
+	const {
+		unsigned: derivedTransfer,
+	} = await transactionConstruct.utilityAsDerivative(
 		{ origin: multisigAddr },
 		0,
 		transferToColdStorage.method
@@ -300,31 +362,43 @@ async function happyPath(
 	response();
 	waiting();
 
-	const announcedTimepoint = await chainSync.pollingEventListener('proxy', 'Announced');
+	const announcedTimepoint = await chainSync.pollingEventListener(
+		'proxy',
+		'Announced'
+	);
 	success(announcedTimepoint);
 	console.log();
 
 	describeTransaction('Check safety of the announced transaction.');
 	await waitToContinue();
 
-	const transactionSafety = transactionConstruct.safetyWorker({
-		unsigned: transferToColdStorage,
-		registry: transferToColdStorageRegistry,
-		metadataRpc: transferToColdStorageMetadataRpc,
-	}, keys.coldAcct.address);
+	const transactionSafety = transactionConstruct.safetyWorker(
+		{
+			unsigned: transferToColdStorage,
+			registry: transferToColdStorageRegistry,
+			metadataRpc: transferToColdStorageMetadataRpc,
+		},
+		keys.coldAcct.address
+	);
 
 	if (transactionSafety) {
-		console.log("  >> Transaction safety confirmed 😌");
+		console.log('  >> Transaction safety confirmed 😌');
 	} else {
 		console.log('  !! Transaction is not safe - bailing 💣');
 		return;
 	}
 
-	describeTransaction(`Waiting ${delayPeriod} blocks for the delay period to pass`);
-	await chainSync.waitUntilHeight(announcedTimepoint.blockHeight + delayPeriod);
+	describeTransaction(
+		`Waiting ${delayPeriod} blocks for the delay period to pass`
+	);
+	await chainSync.waitUntilHeight(
+		announcedTimepoint.blockHeight + delayPeriod
+	);
 	console.log();
 
-	describeTransaction(`Using the proxy account to send funds from the first derived account to the cold account`);
+	describeTransaction(
+		`Using the proxy account to send funds from the first derived account to the cold account`
+	);
 	const proxyAnnounced = await transactionConstruct.proxyProxyAnnounced(
 		{ origin: keys.proxy.address },
 		multisigAddr,
@@ -341,7 +415,10 @@ async function happyPath(
 	response();
 	waiting();
 
-	const transferTimepoint = await chainSync.pollingEventListener('balances', 'Transfer');
+	const transferTimepoint = await chainSync.pollingEventListener(
+		'balances',
+		'Transfer'
+	);
 	success(transferTimepoint);
 	logSeparator();
 }
@@ -356,7 +433,9 @@ async function adversarialPath(
 	delayPeriod: number,
 	maxWeight: number
 ): Promise<void> {
-	describeTransaction(`The proxy account has been compromised and is announcing intent to transfer funds from the first derived account to an attacker's account`);
+	describeTransaction(
+		`The proxy account has been compromised and is announcing intent to transfer funds from the first derived account to an attacker's account`
+	);
 
 	const {
 		unsigned: transferToAttacker,
@@ -367,7 +446,9 @@ async function adversarialPath(
 		keys.attacker.address,
 		'999999999999999'
 	);
-	const { unsigned: derivedTransfer } = await transactionConstruct.utilityAsDerivative(
+	const {
+		unsigned: derivedTransfer,
+	} = await transactionConstruct.utilityAsDerivative(
 		{ origin: multisigAddr },
 		1,
 		transferToAttacker.method
@@ -379,18 +460,26 @@ async function adversarialPath(
 		multisigAddr,
 		derivedHash
 	);
-	const signedProxyAnnounceC1 = transactionConstruct.createAndSignTransaction(keys.proxy, proxyAnnounceC1);
+	const signedProxyAnnounceC1 = transactionConstruct.createAndSignTransaction(
+		keys.proxy,
+		proxyAnnounceC1
+	);
 	submitting();
 
 	await sidecarApi.submitTransaction(signedProxyAnnounceC1);
 	response();
 	waiting();
 
-	const announcedTimepoint = await chainSync.pollingEventListener('proxy', 'Announced');
+	const announcedTimepoint = await chainSync.pollingEventListener(
+		'proxy',
+		'Announced'
+	);
 	success(announcedTimepoint);
 	console.log();
 
-	describeTransaction(`In ${delayPeriod} blocks the attacker will use the proxy to transfer funds to their account`);
+	describeTransaction(
+		`In ${delayPeriod} blocks the attacker will use the proxy to transfer funds to their account`
+	);
 	void chainSync
 		.waitUntilHeight(announcedTimepoint.blockHeight + delayPeriod)
 		.then(async () => {
@@ -412,25 +501,35 @@ async function adversarialPath(
 			console.log(`  !! Received response 👀`);
 			console.log('  !! Waiting for transaction inclusion ⌛️');
 			try {
-				const transferTimepoint = await chainSync.pollingEventListener('balances', 'Transfer');
-				console.log(` !!! Malicious transaction included at block #${transferTimepoint.blockHeight}, index ${transferTimepoint.extrinsicIndex} 😭`);
+				const transferTimepoint = await chainSync.pollingEventListener(
+					'balances',
+					'Transfer'
+				);
+				console.log(
+					` !!! Malicious transaction included at block #${transferTimepoint.blockHeight}, index ${transferTimepoint.extrinsicIndex} 😭`
+				);
 			} catch {
 				console.log('\n🎉 Malicious transaction averted! 🎉\n');
 			}
 		});
 
 	describeTransaction(`Checking transaction safety`);
-	const isSafe = transactionConstruct.safetyWorker({
-		unsigned: transferToAttacker,
-		registry: transferToAttackerRegistry,
-		metadataRpc: transferToAttackerMetadataRpc,
-	}, keys.coldAcct.address);
+	const isSafe = transactionConstruct.safetyWorker(
+		{
+			unsigned: transferToAttacker,
+			registry: transferToAttackerRegistry,
+			metadataRpc: transferToAttackerMetadataRpc,
+		},
+		keys.coldAcct.address
+	);
 
 	if (isSafe) {
 		throw 'Failed to identify malicious transaction!';
 	}
 
-	console.log('\n🚧 Malicious proxy transfer detected! Kicking off proxy removal protocol! 🚧\n');
+	console.log(
+		'\n🚧 Malicious proxy transfer detected! Kicking off proxy removal protocol! 🚧\n'
+	);
 
 	describeTransaction(`Approving removal of proxies from multisig as Alice`);
 	const {
@@ -455,11 +554,16 @@ async function adversarialPath(
 	response();
 	waiting();
 
-	const approveRemoveProxiesTimepoint = await chainSync.pollingEventListener('multisig', 'NewMultisig');
+	const approveRemoveProxiesTimepoint = await chainSync.pollingEventListener(
+		'multisig',
+		'NewMultisig'
+	);
 	success(approveRemoveProxiesTimepoint);
 	console.log();
 
-	describeTransaction(`Approving & executing removal of proxies from multisig as Bob`);
+	describeTransaction(
+		`Approving & executing removal of proxies from multisig as Bob`
+	);
 	const removeProxiesAsMulti = await transactionConstruct.multiSigAsMulti(
 		{ origin: keys.multisig1.address },
 		2,
@@ -479,8 +583,13 @@ async function adversarialPath(
 	response();
 	waiting();
 
-	const removeProxiesTimepoint = await chainSync.pollingEventListener('proxy', 'ProxyExecuted');
+	const removeProxiesTimepoint = await chainSync.pollingEventListener(
+		'proxy',
+		'ProxyExecuted'
+	);
 	success(removeProxiesTimepoint);
 
-	console.log(' >>> All proxies have been removed from the multisig account 😌');
+	console.log(
+		' >>> All proxies have been removed from the multisig account 😌'
+	);
 }

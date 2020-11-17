@@ -1,4 +1,4 @@
-import { MaybeTimepoint } from "../transaction/types";
+import { MaybeTimepoint } from '../transaction/types';
 
 export function logSeparator(): void {
 	console.log(Array(80).fill('━').join(''), '\n');
@@ -21,5 +21,7 @@ export function waiting(): void {
 }
 
 export function success(includedAt: MaybeTimepoint): void {
-	console.log(` >>> Successfully included at block #${includedAt.blockHeight}, index ${includedAt.extrinsicIndex}!`);
+	console.log(
+		` >>> Successfully included at block #${includedAt.blockHeight}, index ${includedAt.extrinsicIndex}!`
+	);
 }

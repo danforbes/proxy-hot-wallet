@@ -40,23 +40,11 @@ export async function createDemoKeyPairs(): Promise<DemoKeys> {
 		'sr25519'
 	);
 
-	const bob = keyring.addFromUri(
-		'//Bob',
-		{ name: 'Bob' },
-		'sr25519'
-	);
+	const bob = keyring.addFromUri('//Bob', { name: 'Bob' }, 'sr25519');
 
-	const dave = keyring.addFromUri(
-		'//Dave',
-		{ name: 'Dave' },
-		'sr25519'
-	);
+	const dave = keyring.addFromUri('//Dave', { name: 'Dave' }, 'sr25519');
 
-	const eve = keyring.addFromUri(
-		'//Eve',
-		{ name: 'Eve' },
-		'sr25519'
-	);
+	const eve = keyring.addFromUri('//Eve', { name: 'Eve' }, 'sr25519');
 
 	const charlie = keyring.addFromUri(
 		'//Charlie',
