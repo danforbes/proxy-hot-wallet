@@ -18,21 +18,13 @@ import {
 	UnsignedMaterial,
 } from './types';
 
-/**
- * Can be found using the `/runtime/spec` endpoint on Sidecar
- */
-const CALIENTE_CHAIN_PROPERTIES = {
-	ss58Format: 42,
-	tokenDecimals: 12,
-	tokenSymbol: null,
-};
-
 export class TransactionConstruct {
 	private sidecarApi: SidecarApi;
 	private readonly ERA_PERIOD = 64;
 
-	constructor(sidecarURL: string, readonly coldStorage: string) {
+	constructor(sidecarURL: string, readonly chainProperties: unknown) {
 		this.sidecarApi = new SidecarApi(sidecarURL);
+		this.chainProperties = chainProperties;
 	}
 
 	private getRegistryCaliente(metadataRpc: string): TypeRegistry {
@@ -44,7 +36,7 @@ export class TransactionConstruct {
 		});
 
 		registry.setChainProperties(
-			registry.createType('ChainProperties', CALIENTE_CHAIN_PROPERTIES)
+			registry.createType('ChainProperties', this.chainProperties)
 		);
 
 		registry.setMetadata(createMetadata(registry, metadataRpc));
@@ -138,14 +130,11 @@ export class TransactionConstruct {
 				threshold,
 				otherSignatories,
 				maybeTimepoint:
-					maybeTimepointArg === null
-						? null
-						: registry
-								.createType(
-									'Option<Timepoint>',
-									maybeTimepointArg
-								)
-								.toJSON(),
+					maybeTimepointArg === null ? null
+						: registry.createType('Option<Timepoint>',{
+							height: maybeTimepointArg.blockHeight,
+							index: maybeTimepointArg.extrinsicIndex,
+						}).toJSON(),
 				callHash,
 				maxWeight,
 			},
@@ -206,9 +195,10 @@ export class TransactionConstruct {
 			{
 				threshold,
 				otherSignatories,
-				maybeTimepoint: registry
-					.createType('Option<Timepoint>', maybeTimepointArg)
-					.toJSON(),
+				maybeTimepoint: registry.createType('Option<Timepoint>', {
+					height: maybeTimepointArg?.blockHeight,
+					index: maybeTimepointArg?.extrinsicIndex,
+				}).toJSON(),
 				call,
 				storeCall,
 				maxWeight,
@@ -441,22 +431,12 @@ export class TransactionConstruct {
 		unsigned,
 		registry,
 		metadataRpc,
-	}: UnsignedMaterial): boolean {
+	}: UnsignedMaterial, coldStorage: string): boolean {
 		const decodedC0 = txwrapper.decode(unsigned, {
 			registry,
 			metadataRpc,
 		});
-		console.log(
-			'Decoded attempt to transfer from derivative account:\n',
-			decodedC0.method.args
-		);
-		const isColdStorageAddress =
-			decodedC0.method.args.dest === this.coldStorage;
-		console.log(
-			'Destination is correct cold storage: ',
-			isColdStorageAddress
-		);
 
-		return isColdStorageAddress;
+		return decodedC0.method.args.dest === coldStorage;
 	}
 }

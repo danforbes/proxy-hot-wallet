@@ -7,7 +7,7 @@ export function waitToContinue(): Promise<void> {
 	});
 
 	return new Promise((resolve, _reject) => {
-		rl.question('Press enter to continue:\n', (_answer) => {
+		rl.question('Press enter to continue:', (_answer) => {
 			console.log(_answer);
 			rl.close();
 			resolve(undefined);

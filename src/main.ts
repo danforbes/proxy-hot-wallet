@@ -5,148 +5,359 @@ import {
 } from '@polkadot/util-crypto';
 
 import { ChainSync } from './ChainSync';
-import { createDemoKeyPairs, Keys } from './keyring';
+import { createDemoKeyPairs, DemoKeys } from './keyring';
 import { SidecarApi } from './sidecar/SidecarApi';
 import { TransactionConstruct } from './transaction/TransactionConstruct';
 import {
-	logSeperator,
-	sortAddresses,
-	submiting,
+	logSeparator,
+	describeTransaction,
+	submitting,
+	response,
 	waiting,
+	success,
 	waitToContinue,
+	sortAddresses,
 } from './util';
 
-const sidecarUrl = 'http://127.0.0.1:8080';
+const SIDECAR_URL = 'http://127.0.0.1:8080';
+
+const CALIENTE_CHAIN_PROPERTIES = {
+	ss58Format: 42,
+	tokenDecimals: 12,
+	tokenSymbol: null,
+};
 
 async function main() {
 	const keys = await createDemoKeyPairs();
-	const transactionConstruct = new TransactionConstruct(
-		sidecarUrl,
-		keys.aliceStash.address
-	);
-	const sidecarApi = new SidecarApi(sidecarUrl);
-	const chainSync = new ChainSync(sidecarUrl);
 
-	const addresses = [keys.alice.address, keys.bob.address, keys.dave.address];
-	const threshold = 2;
-	const ss58Prefix = 42;
-	const multisigAddr = encodeMultiAddress(addresses, threshold, ss58Prefix);
-
-	console.log('Multisig address generation info');
-	console.log(`Addresses: ${addresses.join(' ')}`);
-	console.log(`Threshold: ${threshold}`);
-	console.log(`Multisig Address (SS58: ${ss58Prefix}): ${multisigAddr}`);
-	logSeperator();
+	// Ref: https://wiki.polkadot.network/docs/en/learn-accounts#multi-signature-accounts
+	describeTransaction('Create and fund a multisig account');
 	await waitToContinue();
 
-	// Load up multisig account with currency so it can make transactions
-	const trasnferValue = '999999999999999';
+	const addresses = [keys.multisig0.address, keys.multisig1.address, keys.multisig2.address];
+	const multisigThreshold = 2;
+	const ss58Prefix = CALIENTE_CHAIN_PROPERTIES.ss58Format;
+	const multisigAcct = encodeMultiAddress(addresses, multisigThreshold, ss58Prefix);
+
+	console.log(' >>> Created multisig account ✍️');
+	console.log('  >> Component Accounts:');
+	addresses.forEach((address) => console.log('   > ' + address));
+	console.log(`  >> Signature Threshold: ${multisigThreshold}`);
+	console.log(`  >> Multisig Address: ${multisigAcct}\n`);
+
+	// Helpers for encoding signed transactions.
+	const transactionConstruct = new TransactionConstruct(SIDECAR_URL, CALIENTE_CHAIN_PROPERTIES);
+	// Helpers for interacting with the Sidecar REST API.
+	const sidecarApi = new SidecarApi(SIDECAR_URL);
+	// Helpers for blocking until completion of on-chain transactions.
+	const chainSync = new ChainSync(SIDECAR_URL);
+
+	// Load up multisig account with currency so it can make transactions.
+	const transferValue = '999999999999999';
+	describeTransaction(`Transferring ${transferValue} units from Alice to multisig account`);
+
 	const transferToMultiSigCall = await transactionConstruct.balancesTransfer(
-		{ origin: keys.alice.address },
-		multisigAddr,
-		trasnferValue
+		{ origin: keys.multisig0.address },
+		multisigAcct,
+		transferValue
 	);
 	const signedTransferToMultiSigCall = transactionConstruct.createAndSignTransaction(
-		keys.alice,
+		keys.multisig0,
 		transferToMultiSigCall
 	);
-	console.log(`balances.transfer(origin: Alice, dest: multisig address)`);
-	submiting();
-	const nodeRes1 = await sidecarApi.submitTransaction(
-		signedTransferToMultiSigCall
-	);
-	console.log(`Node response: `, nodeRes1.hash);
-	waiting();
-	const inclusionPoint1 = await chainSync.pollingEventListener(
-		'balances',
-		'Transfer'
-	);
-	console.log(
-		'Balances.transfer(origin: Alice, dest: multisig address) succesfully included at ',
-		inclusionPoint1
-	);
-	logSeperator();
-	await waitToContinue();
+	submitting();
 
-	const delayPeriod = 10; // 10 blocks = 1 min
+	await sidecarApi.submitTransaction(signedTransferToMultiSigCall);
+	response();
+	waiting();
+
+	const transferToMultisigTimepoint = await chainSync.pollingEventListener('balances', 'Transfer');
+	success(transferToMultisigTimepoint);
+
+	logSeparator();
+
+	const delayPeriodInBlocks = 6;
 	const maxWeight = 1000000000;
-	// Make Eve the proxy for the multisig address and set up the proxy with `delayPeriod`
-	// delay between a proxied calls announcement and earliest possible point of execution
+
+	// Make Eve a time-delay proxy for the multisig account. Eve will be able to execute
+	// transactions up to some maximum weight on behalf of the multisig account, but will have
+	// to announce the intention to do so and allow for a delay during which time a transaction
+	// may be canceled.
+	describeTransaction("Add Eve as time-delay proxy for multisig account");
+	await waitToContinue();
 	await setupProxyForMultisig(
-		multisigAddr,
+		multisigAcct,
 		transactionConstruct,
 		chainSync,
 		sidecarApi,
 		keys,
 		ss58Prefix,
-		delayPeriod,
+		delayPeriodInBlocks,
 		maxWeight
 	);
 
-	// Create derivative addresses from the multisig address.
-	const deriveAddr0 = encodeDerivedAddress(multisigAddr, 0, ss58Prefix);
-	const deriveAddr1 = encodeDerivedAddress(multisigAddr, 1, ss58Prefix);
-	console.log('Created two derived addresses from the multisig address');
-	console.log('Multisig derive 0: ', deriveAddr0);
-	console.log('Multisig derive 1: ', deriveAddr1);
-	logSeperator();
+	describeTransaction('Create two derived accounts from the multisig account and fund them');
 	await waitToContinue();
 
-	// Depositer transfers money into multisig derive addresses 0 and 1.
-	await depositerTransferToDeriv(
+	const derivedAddr0 = encodeDerivedAddress(multisigAcct, 0, ss58Prefix);
+	const derivedAddr1 = encodeDerivedAddress(multisigAcct, 1, ss58Prefix);
+
+	console.log(' >>> Created derived accounts 👶');
+	console.log('  >> Derived Address #1: ' + derivedAddr0);
+	console.log('  >> Derived Address #2: ' + derivedAddr1);
+	console.log();
+	await fundDerivedAccts(
 		transactionConstruct,
 		chainSync,
 		sidecarApi,
 		keys,
-		deriveAddr0,
-		deriveAddr1
+		derivedAddr0,
+		derivedAddr1
 	);
 
-	// the proxy transfers funds from multisig derive address 0 to cold storage
+	describeTransaction("Use proxy address to send funds from multisig account to cold account");
+	await waitToContinue();
 	await happyPath(
 		transactionConstruct,
 		chainSync,
 		sidecarApi,
 		keys,
-		deriveAddr0,
-		multisigAddr,
-		delayPeriod
+		derivedAddr0,
+		multisigAcct,
+		delayPeriodInBlocks
 	);
 
-	// An attacker compromises the proxy and uses the proxy to send funds from multisig
-	// derive address 1 to the attackers address. The safety worker will see the announcement
+	// An attacker compromises the proxy and uses the proxy to send funds from the second
+	// derived account to the attacker's address. The safety worker will see the announcement
 	// for the proxy call and alert the system that there is a transfer from a derivative
-	// address that does not go to cold storage. The system will the have two of the composite
+	// address that does not go to cold storage. The system will then have two of the component
 	// addresses for the multisig create a transaction to remove all proxies from the multisig
 	// address and thus prevent the attacker from making the call as a proxy.
+	describeTransaction("Demonstrate the hot wallet's security capabilities");
+	await waitToContinue();
 	await adversarialPath(
 		transactionConstruct,
 		chainSync,
 		sidecarApi,
 		keys,
-		deriveAddr1,
-		multisigAddr,
-		delayPeriod,
+		derivedAddr1,
+		multisigAcct,
+		delayPeriodInBlocks,
 		maxWeight
 	);
 }
 
 main().catch(console.log);
 
+// Helper function to add Eve as a time-delay proxy for the multisig account.
+async function setupProxyForMultisig(
+	multisigAddr: string,
+	transactionConstruct: TransactionConstruct,
+	chainSync: ChainSync,
+	sidecarApi: SidecarApi,
+	keys: DemoKeys,
+	ss58Prefix: number,
+	delayPeriod: number,
+	maxWeight: number
+): Promise<void> {
+	const {
+		unsigned: { method: addProxyEveMethod },
+	} = await transactionConstruct.proxyAddProxy(
+		{ origin: multisigAddr },
+		keys.proxy.address,
+		'Any',
+		delayPeriod
+	);
+	const addProxyEveHash = blake2AsHex(addProxyEveMethod, 256);
+
+	describeTransaction(`Approving multisig transaction as Bob`);
+	const bobApproveAsMulti = await transactionConstruct.multiSigApproveAsMulti(
+		{ origin: keys.multisig1.address },
+		2,
+		sortAddresses([keys.multisig0.address, keys.multisig2.address], ss58Prefix),
+		null,
+		addProxyEveHash,
+		maxWeight
+	);
+	const signedApproveAsMulti = transactionConstruct.createAndSignTransaction(keys.multisig1, bobApproveAsMulti);
+	submitting();
+
+	await sidecarApi.submitTransaction(signedApproveAsMulti);
+	response();
+	waiting();
+
+	const bobApproveAsMultiTimepoint = await chainSync.pollingEventListener('multisig', 'NewMultisig');
+	success(bobApproveAsMultiTimepoint);
+	console.log();
+
+	describeTransaction(`Approving & executing multisig transaction as Dave`);
+	const daveAsMulti = await transactionConstruct.multiSigAsMulti(
+		{ origin: keys.multisig2.address },
+		2,
+		sortAddresses([keys.multisig0.address, keys.multisig1.address], ss58Prefix),
+		bobApproveAsMultiTimepoint,
+		addProxyEveMethod,
+		false,
+		maxWeight
+	);
+	const signedAsMulti = transactionConstruct.createAndSignTransaction(keys.multisig2,	daveAsMulti);
+	submitting();
+
+	await sidecarApi.submitTransaction(signedAsMulti);
+	response();
+	waiting();
+
+	const daveAsMultiTimepoint = await chainSync.pollingEventListener('multisig', 'MultisigExecuted');
+	success(daveAsMultiTimepoint);
+	logSeparator();
+}
+
+async function fundDerivedAccts(
+	transactionConstruct: TransactionConstruct,
+	chainSync: ChainSync,
+	sidecarApi: SidecarApi,
+	keys: DemoKeys,
+	deriveAddr0: string,
+	deriveAddr1: string
+): Promise<void> {
+	const transferValue = '999999999999999';
+
+	describeTransaction(`Transferring ${transferValue} units from Charlie to first derived address`);
+	const transferToD0 = await transactionConstruct.balancesTransfer(
+		{ origin: keys.bank.address },
+		deriveAddr0,
+		transferValue,
+	);
+	const signedTransferToD0 = transactionConstruct.createAndSignTransaction(keys.bank, transferToD0);
+	submitting();
+
+	await sidecarApi.submitTransaction(signedTransferToD0);
+	response();
+	waiting();
+
+	const transferToD0Timepoint = await chainSync.pollingEventListener('balances', 'Transfer');
+	success(transferToD0Timepoint);
+	console.log();
+
+	describeTransaction(`Transferring ${transferValue} units from Charlie to second derived address`);
+	const transferToD1 = await transactionConstruct.balancesTransfer(
+		{ origin: keys.bank.address, height: transferToD0Timepoint.blockHeight + 1 },
+		deriveAddr1,
+		transferValue,
+	);
+	const signedTransferToD1 = transactionConstruct.createAndSignTransaction(keys.bank, transferToD1);
+	submitting();
+
+	await sidecarApi.submitTransaction(signedTransferToD1);
+	response();
+	waiting();
+
+	const transferToD1Timepoint = await chainSync.pollingEventListener('balances', 'Transfer', transferToD0Timepoint);
+	success(transferToD1Timepoint)
+	logSeparator();
+}
+
+// Use proxy account to send funds from multisig account to cold account.
+async function happyPath(
+	transactionConstruct: TransactionConstruct,
+	chainSync: ChainSync,
+	sidecarApi: SidecarApi,
+	keys: DemoKeys,
+	deriveAddr0: string,
+	multisigAddr: string,
+	delayPeriod: number
+): Promise<void> {
+	describeTransaction(`Announcing the proxy account's intent to transfer funds from the first derived account to the cold account`);
+
+	const {
+		unsigned: transferToColdStorage,
+		registry: transferToColdStorageRegistry,
+		metadataRpc: transferToColdStorageMetadataRpc,
+	} = await transactionConstruct.balancesTransfer(
+		{ origin: deriveAddr0 },
+		keys.coldAcct.address,
+		'1'
+	);
+	const { unsigned: derivedTransfer } = await transactionConstruct.utilityAsDerivative(
+		{ origin: multisigAddr },
+		0,
+		transferToColdStorage.method
+	);
+	const derivedMethod = derivedTransfer.method;
+	const derivedHash = blake2AsHex(derivedMethod, 256);
+	const proxyAnnounceDerived = await transactionConstruct.proxyAnnounce(
+		{ origin: keys.proxy.address },
+		multisigAddr,
+		derivedHash
+	);
+	const signedProxyAnnounceC0 = transactionConstruct.createAndSignTransaction(
+		keys.proxy,
+		proxyAnnounceDerived
+	);
+	submitting();
+
+	await sidecarApi.submitTransaction(signedProxyAnnounceC0);
+	response();
+	waiting();
+
+	const announcedTimepoint = await chainSync.pollingEventListener('proxy', 'Announced');
+	success(announcedTimepoint);
+	console.log();
+
+	describeTransaction('Check safety of the announced transaction.');
+	await waitToContinue();
+
+	const transactionSafety = transactionConstruct.safetyWorker({
+		unsigned: transferToColdStorage,
+		registry: transferToColdStorageRegistry,
+		metadataRpc: transferToColdStorageMetadataRpc,
+	}, keys.coldAcct.address);
+
+	if (transactionSafety) {
+		console.log("  >> Transaction safety confirmed 😌");
+	} else {
+		console.log('  !! Transaction is not safe - bailing 💣');
+		return;
+	}
+
+	describeTransaction(`Waiting ${delayPeriod} blocks for the delay period to pass`);
+	await chainSync.waitUntilHeight(announcedTimepoint.blockHeight + delayPeriod);
+	console.log();
+
+	describeTransaction(`Using the proxy account to send funds from the first derived account to the cold account`);
+	const proxyAnnounced = await transactionConstruct.proxyProxyAnnounced(
+		{ origin: keys.proxy.address },
+		multisigAddr,
+		keys.proxy.address,
+		'Any',
+		derivedMethod
+	);
+	const signedProxyAnnounced = transactionConstruct.createAndSignTransaction(
+		keys.proxy,
+		proxyAnnounced
+	);
+	submitting();
+	await sidecarApi.submitTransaction(signedProxyAnnounced);
+	response();
+	waiting();
+
+	const transferTimepoint = await chainSync.pollingEventListener('balances', 'Transfer');
+	success(transferTimepoint);
+	logSeparator();
+}
+
 async function adversarialPath(
 	transactionConstruct: TransactionConstruct,
 	chainSync: ChainSync,
 	sidecarApi: SidecarApi,
-	keys: Keys,
+	keys: DemoKeys,
 	deriveAddr1: string,
 	multisigAddr: string,
 	delayPeriod: number,
 	maxWeight: number
 ): Promise<void> {
-	console.log('Now demonstrating the adversarial path.\n');
+	describeTransaction(`The proxy account has been compromised and is announcing intent to transfer funds from the first derived account to an attacker's account`);
 
-	const c1Display =
-		'utility.asDerivative(origin: multisig address, index: 1, call: balances.transfer(origin: derivate address 1, dest: Attacker)';
 	const {
 		unsigned: transferToAttacker,
 		registry: transferToAttackerRegistry,
@@ -154,440 +365,122 @@ async function adversarialPath(
 	} = await transactionConstruct.balancesTransfer(
 		{ origin: deriveAddr1 },
 		keys.attacker.address,
-		'01234666'
+		'999999999999999'
 	);
-	const { unsigned: c1 } = await transactionConstruct.utilityAsDerivative(
+	const { unsigned: derivedTransfer } = await transactionConstruct.utilityAsDerivative(
 		{ origin: multisigAddr },
 		1,
 		transferToAttacker.method
 	);
-	const c1Method = c1.method;
-	const c1Hash = blake2AsHex(c1Method, 256);
+	const derivedMethod = derivedTransfer.method;
+	const derivedHash = blake2AsHex(derivedMethod, 256);
 	const proxyAnnounceC1 = await transactionConstruct.proxyAnnounce(
-		{ origin: keys.eve.address },
+		{ origin: keys.proxy.address },
 		multisigAddr,
-		c1Hash
+		derivedHash
 	);
-	const signedProxyAnnounceC1 = transactionConstruct.createAndSignTransaction(
-		keys.eve,
-		proxyAnnounceC1
-	);
+	const signedProxyAnnounceC1 = transactionConstruct.createAndSignTransaction(keys.proxy, proxyAnnounceC1);
+	submitting();
 
-	console.log(`proxy.announce(origin: Alice, callHash: h(${c1Display})`);
-	submiting();
-	const result8 = await sidecarApi.submitTransaction(signedProxyAnnounceC1);
-	console.log(`Node response: `, result8.hash);
+	await sidecarApi.submitTransaction(signedProxyAnnounceC1);
+	response();
 	waiting();
-	const inclusionPoint5 = await chainSync.pollingEventListener(
-		'proxy',
-		'Announced'
-	);
-	if (!inclusionPoint5) throw 'blockInclusionAnnounceC1 is null';
-	console.log(
-		`proxy.announce(origin: Alice, callHash: h(${c1Display}) succesfully included at`,
-		inclusionPoint5
-	);
-	logSeperator();
-	await waitToContinue();
 
-	console.log(
-		`Now that the transacstion was succesfuly submitted, wait ${delayPeriod} blocks after announcement (until block${
-			inclusionPoint5?.height + delayPeriod
-		}) ` +
-			'for the delay periood to pass and execute with proxyAnnounced.\n' +
-			'...but hopefully we can stop the Attacker before then!'
-	);
-	console.log(
-		'There is a process in the background that will fire proxyAnnounced to execute the actual balance ' +
-			'transfer to the attacker if we do not act fast enough; the demo will keep moving forward.'
-	);
+	const announcedTimepoint = await chainSync.pollingEventListener('proxy', 'Announced');
+	success(announcedTimepoint);
+	console.log();
+
+	describeTransaction(`In ${delayPeriod} blocks the attacker will use the proxy to transfer funds to their account`);
 	void chainSync
-		.waitUntilHeight(inclusionPoint5?.height + delayPeriod)
+		.waitUntilHeight(announcedTimepoint.blockHeight + delayPeriod)
 		.then(async () => {
+			console.log(' !!! Attacker is attempting to transfer funds...');
 			const proxyAnnouncedCallC1 = await transactionConstruct.proxyProxyAnnounced(
-				{ origin: keys.eve.address },
+				{ origin: keys.proxy.address },
 				multisigAddr,
-				keys.eve.address,
+				keys.proxy.address,
 				'Any',
-				c1Method
+				derivedMethod
 			);
-			const signedProxyAnnoucedTxC1 = transactionConstruct.createAndSignTransaction(
-				keys.eve,
+			const signedProxyAnnouncedTxC1 = transactionConstruct.createAndSignTransaction(
+				keys.proxy,
 				proxyAnnouncedCallC1
 			);
-			console.log(
-				`\n(💤background task) proxy.proxyAnnounced(${c1Display})`
-			);
-			submiting();
-			const result7 = await sidecarApi.submitTransaction(
-				signedProxyAnnoucedTxC1
-			);
-			console.log(`\nNode response: `, result7.hash);
-			waiting();
-			let inclusionPoint6;
+			console.log('  !! Malicious transaction submitted 😲');
+
+			await sidecarApi.submitTransaction(signedProxyAnnouncedTxC1);
+			console.log(`  !! Received response 👀`);
+			console.log('  !! Waiting for transaction inclusion ⌛️');
 			try {
-				inclusionPoint6 = await chainSync.pollingEventListener(
-					'balances',
-					'Transfer'
-				);
+				const transferTimepoint = await chainSync.pollingEventListener('balances', 'Transfer');
+				console.log(` !!! Malicious transaction included at block #${transferTimepoint.blockHeight}, index ${transferTimepoint.extrinsicIndex} 😭`);
 			} catch {
-				console.log(
-					'\nAttacker tranasction failed! The system worked succesfully!'
-				);
-				process.exit();
+				console.log('\n🎉 Malicious transaction averted! 🎉\n');
 			}
-			console.log(
-				`\nproxy.proxyAnnounced(${c1Display}) succesfully included at `,
-				inclusionPoint6
-			);
-			console.log('\nSecurity system failed!');
-			process.exit();
 		});
 
-	console.log(
-		`\nSimultanously sending ${c1Display} to the safety worker for decoding` +
-			' and verification of the transfer - the system will catch the attacker here and kickoff' +
-			' the security procedure to stop the malicious transfer'
-	);
+	describeTransaction(`Checking transaction safety`);
 	const isSafe = transactionConstruct.safetyWorker({
 		unsigned: transferToAttacker,
 		registry: transferToAttackerRegistry,
 		metadataRpc: transferToAttackerMetadataRpc,
-	});
-	if (isSafe) throw 'error when processing unsafe transaction';
-	console.log(
-		'\n🚧 Malicious proxy transfer detected, kicking off proxy removal protocol! 🚧\n'
-	);
-	const removeProxiesDisplay =
-		'proxy.removeProxies(origin: multisig address)';
+	}, keys.coldAcct.address);
+
+	if (isSafe) {
+		throw 'Failed to identify malicious transaction!';
+	}
+
+	console.log('\n🚧 Malicious proxy transfer detected! Kicking off proxy removal protocol! 🚧\n');
+
+	describeTransaction(`Approving removal of proxies from multisig as Alice`);
 	const {
 		unsigned: { method: removeProxiesMethod },
 	} = await transactionConstruct.proxyRemoveProxies({ origin: multisigAddr });
 	const removeProxiesHash = blake2AsHex(removeProxiesMethod);
-	const removeProxiesApproveAsMulti = await transactionConstruct.multiSigApproveAsMulti(
-		{ origin: keys.alice.address },
+	const approveRemoveProxies = await transactionConstruct.multiSigApproveAsMulti(
+		{ origin: keys.multisig0.address },
 		2,
-		sortAddresses([keys.bob.address, keys.dave.address]),
+		sortAddresses([keys.multisig1.address, keys.multisig2.address]),
 		null,
 		removeProxiesHash,
 		maxWeight
 	);
 	const signedRemoveProxiesApproveAsMulti = transactionConstruct.createAndSignTransaction(
-		keys.alice,
-		removeProxiesApproveAsMulti
+		keys.multisig0,
+		approveRemoveProxies
 	);
+	submitting();
 
-	console.log(
-		`multisig.approveAsMulti(origin: Alice, callHash: h(${removeProxiesDisplay}))`
-	);
-	submiting();
-	const nodeRes4 = await sidecarApi.submitTransaction(
-		signedRemoveProxiesApproveAsMulti
-	);
-	console.log(`Node response: `, nodeRes4.hash);
+	await sidecarApi.submitTransaction(signedRemoveProxiesApproveAsMulti);
+	response();
 	waiting();
-	const inclusionPoint7 = await chainSync.pollingEventListener(
-		'multisig',
-		'NewMultisig'
-	);
-	if (!inclusionPoint7) throw 'timepoint1 null';
-	console.log(
-		`multisig.approveAsMulti(origin: Alice, callHash: h(${removeProxiesDisplay})) succesfuly included at`,
-		inclusionPoint7
-	);
 
+	const approveRemoveProxiesTimepoint = await chainSync.pollingEventListener('multisig', 'NewMultisig');
+	success(approveRemoveProxiesTimepoint);
+	console.log();
+
+	describeTransaction(`Approving & executing removal of proxies from multisig as Bob`);
 	const removeProxiesAsMulti = await transactionConstruct.multiSigAsMulti(
-		{ origin: keys.bob.address },
+		{ origin: keys.multisig1.address },
 		2,
-		sortAddresses([keys.alice.address, keys.dave.address]),
-		inclusionPoint7,
+		sortAddresses([keys.multisig0.address, keys.multisig2.address]),
+		approveRemoveProxiesTimepoint,
 		removeProxiesMethod,
 		true,
 		maxWeight
 	);
-	const signedremoveProxiesAsMulti = transactionConstruct.createAndSignTransaction(
-		keys.bob,
+	const signedRemoveProxiesAsMulti = transactionConstruct.createAndSignTransaction(
+		keys.multisig1,
 		removeProxiesAsMulti
 	);
-	console.log(
-		`\nmultisig.asMulti(origin: Bob, call: ${removeProxiesDisplay})`
-	);
-	submiting();
-	const nodeRes5 = await sidecarApi.submitTransaction(
-		signedremoveProxiesAsMulti
-	);
-	console.log(`Node response: `, nodeRes5.hash);
+	submitting();
+
+	await sidecarApi.submitTransaction(signedRemoveProxiesAsMulti);
+	response();
 	waiting();
-	const inclusionPoint8 = await chainSync.pollingEventListener(
-		'proxy',
-		'ProxyExecuted'
-	);
-	if (!inclusionPoint8) throw 'inclusionPoint8 is null';
-	console.log(
-		`multisig.asMulti(origin: Bob, call: ${removeProxiesDisplay}) succsefully included at `,
-		inclusionPoint8
-	);
-	console.log('Crisis averted 👩‍🚒 attacker transfer cancelled 👌!');
-}
 
-async function happyPath(
-	transactionConstruct: TransactionConstruct,
-	chainSync: ChainSync,
-	sidecarApi: SidecarApi,
-	keys: Keys,
-	deriveAddr0: string,
-	multisigAddr: string,
-	delayPeriod: number
-): Promise<void> {
-	console.log(
-		'Now demonstrating the happy path of using the proxy to transfer funds from a multisig derivative account to cold storage.\n'
-	);
+	const removeProxiesTimepoint = await chainSync.pollingEventListener('proxy', 'ProxyExecuted');
+	success(removeProxiesTimepoint);
 
-	const c0Display =
-		'utility.asDerivative(origin: multisig addres, index: 0, call: balances.transfer(origin: derive address 0, dest: cold storage))';
-	const {
-		unsigned: transferToColdStorage,
-		registry: transferToColdStorageRegistry,
-		metadataRpc: transferToColdStorageMetadataRpc,
-	} = await transactionConstruct.balancesTransfer(
-		{ origin: deriveAddr0 },
-		keys.aliceStash.address,
-		'1'
-	);
-	const { unsigned: c0 } = await transactionConstruct.utilityAsDerivative(
-		{ origin: multisigAddr },
-		0,
-		transferToColdStorage.method
-	);
-	const c0Method = c0.method;
-	const c0Hash = blake2AsHex(c0Method, 256);
-	const proxyAnnounceC0 = await transactionConstruct.proxyAnnounce(
-		{ origin: keys.eve.address },
-		multisigAddr,
-		c0Hash
-	);
-	const signedProxyAnnounceC0 = transactionConstruct.createAndSignTransaction(
-		keys.eve,
-		proxyAnnounceC0
-	);
-	console.log(`proxy.announce(origin: eve, callHash: h(${c0Display})`);
-	submiting();
-	const nodeRes3 = await sidecarApi.submitTransaction(signedProxyAnnounceC0);
-	console.log(`Node response: `, nodeRes3.hash);
-	waiting();
-	const inclusionPoint3 = await chainSync.pollingEventListener(
-		'proxy',
-		'Announced'
-	);
-	if (!inclusionPoint3) throw 'inclusionPoint3 is null';
-	console.log(
-		`proxy.announce(origin: eve, callHash: h(${c0Display}) sucessfully included at `,
-		inclusionPoint3
-	);
-	console.log(
-		`\nNow that the transaction was succesfuly submitted, we will wait ${delayPeriod} blocks after the announcement (until block ${
-			inclusionPoint3?.height + delayPeriod
-		}) ` +
-			'for the delay periood to pass and execute with proxyAnnounced.' +
-			'\nThere is a process in the background that will fire proxyAnnounced to execute the actual balance ' +
-			'transfer to cold storage once the delay period is over; the demo will keep moving forward'
-	);
-	logSeperator();
-	await waitToContinue();
-
-	// wait until the delay period has passed and then execute the announce call
-	void chainSync
-		.waitUntilHeight(inclusionPoint3?.height + delayPeriod)
-		.then(async () => {
-			const proxyAnnounced = await transactionConstruct.proxyProxyAnnounced(
-				{ origin: keys.eve.address },
-				multisigAddr,
-				keys.eve.address,
-				'Any',
-				c0Method
-			);
-			const signedProxyAnnouced = transactionConstruct.createAndSignTransaction(
-				keys.eve,
-				proxyAnnounced
-			);
-			console.log(
-				`\n(💤 background task) proxy.proxyAnnounced(origin: Eve, call: ${c0Display}))`
-			);
-			submiting();
-			const result7 = await sidecarApi.submitTransaction(
-				signedProxyAnnouced
-			);
-			console.log(`\n(💤 background task) Node response: `, result7.hash);
-			waiting();
-			const inclusionPoint4 = await chainSync.pollingEventListener(
-				'balances',
-				'Transfer'
-			);
-			console.log(
-				`\n(💤 background task) proxy.proxyAnnounced(origin: Eve, call: ${c0Display})) succesfully included at`,
-				inclusionPoint4
-			);
-			logSeperator();
-			await waitToContinue();
-		});
-
-	console.log(
-		`\nSimultanously sending ${c0Display} to the safety worker for decoding` +
-			' and verification that the transfer is going to cold storage.'
-	);
-	transactionConstruct.safetyWorker({
-		unsigned: transferToColdStorage,
-		registry: transferToColdStorageRegistry,
-		metadataRpc: transferToColdStorageMetadataRpc,
-	});
-	logSeperator();
-	await waitToContinue();
-}
-
-async function setupProxyForMultisig(
-	multisigAddr: string,
-	transactionConstruct: TransactionConstruct,
-	chainSync: ChainSync,
-	sidecarApi: SidecarApi,
-	keys: Keys,
-	ss58Prefix: number,
-	delayPeriod: number,
-	maxWeight: number
-): Promise<void> {
-	// construct tx to add Eve as a proxy to multisig address
-	const {
-		unsigned: { method: addProxyEveMethod },
-	} = await transactionConstruct.proxyAddProxy(
-		{ origin: multisigAddr },
-		keys.eve.address,
-		'Any',
-		delayPeriod
-	);
-	const addProxyEveDisplay =
-		'proxy.addProxy(origin: multisig address, proxy: eve)';
-	const addProxyEveHash = blake2AsHex(addProxyEveMethod, 256);
-
-	// construct tx for Bob to approve adding Eve as a proxy to the multi sig address
-	const approveAsMulti = await transactionConstruct.multiSigApproveAsMulti(
-		{ origin: keys.bob.address },
-		2,
-		sortAddresses([keys.alice.address, keys.dave.address], ss58Prefix),
-		null,
-		addProxyEveHash,
-		maxWeight
-	);
-	const signedApproveAsMulti = transactionConstruct.createAndSignTransaction(
-		keys.bob,
-		approveAsMulti
-	);
-	console.log(
-		`multisig.approveAsMulti(origin: Bob , callHash: h(${addProxyEveDisplay}))`
-	);
-	submiting();
-	const nodeRes2 = await sidecarApi.submitTransaction(signedApproveAsMulti);
-	console.log(`Node response: `, nodeRes2.hash);
-	waiting();
-	const inclusionPoint2 = await chainSync.pollingEventListener(
-		'multisig',
-		'NewMultisig'
-	);
-	console.log(
-		`multisig.approveAsMulti(origin: Bob , callHash: h(${addProxyEveDisplay})) succesfully included at `,
-		inclusionPoint2
-	);
-	logSeperator();
-	await waitToContinue();
-
-	// construct transaction for Dave to approve and execute adding Eve as a proxy to the multisig address
-	const asMulti = await transactionConstruct.multiSigAsMulti(
-		{ origin: keys.dave.address },
-		2,
-		sortAddresses([keys.alice.address, keys.bob.address], ss58Prefix),
-		inclusionPoint2,
-		addProxyEveMethod,
-		false,
-		maxWeight
-	);
-	const signedAsMulti = transactionConstruct.createAndSignTransaction(
-		keys.dave,
-		asMulti
-	);
-	console.log(`multisig.asMulti(origin: Dave, call: ${addProxyEveDisplay})`);
-	submiting();
-	const result3 = await sidecarApi.submitTransaction(signedAsMulti);
-	console.log(`Node response: `, result3.hash);
-	waiting();
-	const inlusionPoint3 = await chainSync.pollingEventListener(
-		'multisig',
-		'MultisigExecuted'
-	);
-	console.log(
-		'multisig.asMulti(origin: Dave, call: ${addProxyEveDisplay}) succsefully included at ',
-		inlusionPoint3
-	);
-	logSeperator();
-	await waitToContinue();
-}
-
-async function depositerTransferToDeriv(
-	transactionConstruct: TransactionConstruct,
-	chainSync: ChainSync,
-	sidecarApi: SidecarApi,
-	keys: Keys,
-	deriveAddr0: string,
-	deriveAddr1: string
-): Promise<void> {
-	// construct tx to transfer funds from charlie (depositer) to mulisig derive address 0
-	const transferToD0 = await transactionConstruct.balancesTransfer(
-		{ origin: keys.charlie.address },
-		deriveAddr0,
-		'1234567890123450'
-	);
-	const signedTransferToD0 = transactionConstruct.createAndSignTransaction(
-		keys.charlie,
-		transferToD0
-	);
-	console.log('balances.transfer(origin: Charlie, dest: derive address 0)');
-	submiting();
-	const nodeRes1 = await sidecarApi.submitTransaction(signedTransferToD0);
-	console.log(`Node response: `, nodeRes1.hash);
-	waiting();
-	const inclusionPoint1 = await chainSync.pollingEventListener(
-		'balances',
-		'Transfer'
-	);
-	if (!inclusionPoint1) throw 'inclusionPoint1 is null';
-	console.log(
-		'balances.transfer(origin: Charlie, dest: derive address 0) sucessfully included at ',
-		inclusionPoint1
-	);
-	logSeperator();
-	await waitToContinue();
-
-	// construct tx to transfer funds from charlie (depositer) to mulisig derive address 1
-	const transferToD1 = await transactionConstruct.balancesTransfer(
-		{ origin: keys.charlie.address, height: inclusionPoint1.height + 1 },
-		deriveAddr1,
-		'1234567890123450'
-	);
-	const signedTransferToD1 = transactionConstruct.createAndSignTransaction(
-		keys.charlie,
-		transferToD1
-	);
-
-	console.log('balances.transfer(origin: Charlie, dest: derive address 1)');
-	submiting();
-	const nodeRes2 = await sidecarApi.submitTransaction(signedTransferToD1);
-	console.log(`Node response: `, nodeRes2.hash);
-	waiting();
-	const inclusionPoint2 = await chainSync.pollingEventListener(
-		'balances',
-		'Transfer'
-	);
-	console.log(
-		'balances.transfer(origin: Charlie, dest: derive address 1) succesfully included at ',
-		inclusionPoint2
-	);
-	logSeperator(); 
-	await waitToContinue();
+	console.log(' >>> All proxies have been removed from the multisig account 😌');
 }

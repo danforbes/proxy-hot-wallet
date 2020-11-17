@@ -1,4 +1,5 @@
 import { SidecarApi } from './sidecar/SidecarApi';
+import { MaybeTimepoint } from './transaction/types';
 import { sleep } from './util';
 
 export class ChainSync {
@@ -10,59 +11,61 @@ export class ChainSync {
 	}
 
 	async pollingEventListener(
-		pallet: string,
-		method: string,
-		// In real life you would need to check the events data, however for this demo we don't
-		_data?: string[]
-	): Promise<{ height: number; index: number } | null> {
-		const searching = true;
-		while (searching) {
+		targetModule: string,
+		targetMethod: string,
+		not?: MaybeTimepoint,
+		// Verifying event data is optional for demonstration purposes.
+		targetData?: string[]
+	): Promise<MaybeTimepoint> {
+		while (true) {
 			const block = await this.sidecarApi.getBlock();
 
 			for (const [idx, ext] of block.extrinsics.entries()) {
-				for (const {
-					method: { method: evMethod, pallet: evPallet },
-				} of ext.events) {
-					if (evMethod === 'ExtrinsicFailed') {
-						throw `unexepcted extrinsic failure at block number ${block.number}`;
+				if (not !== undefined && parseInt(block.number) === not.blockHeight && idx === not.extrinsicIndex) {
+					continue;
+				}
+				
+				for (const { method: { method, pallet }, data } of ext.events) {
+					if (method === 'ExtrinsicFailed') {
+						throw ` !!! Unexpected extrinsic failure at block number ${block.number} 💣`;
 					}
 
-					if (evMethod === method && evPallet === pallet) {
+					if (method === targetMethod && pallet === targetModule) {
+						if (!this.compareEventData(targetData, data)) {
+							throw ` !!! Unexpected event data at block number ${block.number} 💣`;
+						}
+
 						await sleep(this.SECOND / 2);
 						return {
-							height: parseInt(block.number),
-							index: idx,
+							blockHeight: parseInt(block.number),
+							extrinsicIndex: idx,
 						};
 					}
-
-					if (pallet === evPallet && method === evMethod)
-						throw 'debug error';
 				}
 			}
 
 			await sleep(this.SECOND);
 		}
-
-		return null;
 	}
 
 	async waitUntilHeight(height: number): Promise<number> {
-		const waiting = true;
-		while (waiting) {
+		while (true) {
 			const block = await this.sidecarApi.getBlock();
 			const curHeight = parseInt(block.number);
 			if (curHeight >= height) {
 				return curHeight;
 			}
+
 			await sleep(this.SECOND);
 		}
-
-		return -1;
 	}
 
-	private eventDataEq(d1: string[], d2: string[]) {
-		return (
-			d1.length === d2.length && d1.every((ele, idx) => ele === d2[idx])
-		);
+	private compareEventData(expected: string[] | undefined, actual: string[]) {
+		if (expected === undefined) {
+			return true;
+		}
+
+		return expected.length === actual.length
+		    && expected.every((ele, idx) => ele === actual[idx]);
 	}
 }

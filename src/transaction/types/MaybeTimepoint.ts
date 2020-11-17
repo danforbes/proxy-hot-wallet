@@ -1,4 +1,4 @@
 export interface MaybeTimepoint {
-	height: number;
-	index: number;
+	blockHeight: number;
+	extrinsicIndex: number;
 }
